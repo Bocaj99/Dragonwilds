@@ -1,0 +1,17 @@
+# Build output
+HarenaCpp/Output/
+HarenaCpp/RE-UE4SS/
+*.dll
+*.pdb
+*.exe
+*.zip
+*.log
+
+# UE4SS runtime
+building_export.txt
+*.golden_backup
+*.sav
+
+# OS
+Thumbs.db
+.DS_Store
