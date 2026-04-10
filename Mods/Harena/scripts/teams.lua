@@ -55,6 +55,7 @@ function Teams.add_player(team, player_id, player_ref)
     Teams.remove_player(player_id)
     table.insert(Teams.data[team].players, {id = player_id, ref = player_ref})
     Events.fire("team_assigned", {player_id = player_id, team = team})
+    Teams.write_teams_file()
 end
 
 function Teams.remove_player(player_id)
@@ -62,6 +63,7 @@ function Teams.remove_player(player_id)
         for i, p in ipairs(team.players) do
             if p.id == player_id then
                 table.remove(team.players, i)
+                Teams.write_teams_file()
                 return team_name
             end
         end
@@ -160,6 +162,25 @@ function Teams.reset()
     Teams.data.blue.captures = 0
     Teams.data.blue.armor_tier = 2
     Teams.data.blue.pve_kills = {wolf = 0, archer = 0, mage = 0, tank = 0, boss = 0}
+
+    Teams.write_teams_file()
+end
+
+-- Write team assignments to file for C++ HarenaDamage mod
+function Teams.write_teams_file()
+    pcall(function()
+        local path = "ue4ss/Mods/HarenaDamage/teams.txt"
+        local f = io.open(path, "w")
+        if not f then return end
+        for team_name, team in pairs(Teams.data) do
+            if team_name == "red" or team_name == "blue" then
+                for _, p in ipairs(team.players) do
+                    f:write(tostring(p.id) .. "=" .. team_name .. "\n")
+                end
+            end
+        end
+        f:close()
+    end)
 end
 
 return Teams
