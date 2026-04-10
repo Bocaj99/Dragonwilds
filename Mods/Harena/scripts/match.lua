@@ -254,13 +254,10 @@ function Match.start_class_select()
 
                         Match.player_data[pid].class = class_name
                         UI.send(ctrl, "Selected " .. Config.CLASS_DISPLAY[class_name] .. "!", 0, 1, 0)
+                        print(string.format("[Harena] P%d selected class: %s\n", pid, class_name))
 
-                        -- T6 armor preview (equip T6 class gear for visual)
-                        ExecuteInGameThread(function()
-                            pcall(function()
-                                Classes.equip_class_gear(ctrl, team, class_name, 4, 4)
-                            end)
-                        end)
+                        -- T6 armor preview disabled on dedicated server (causes disconnects)
+                        -- Equip happens during preparation phase instead
                         break
                     end
                 end

@@ -107,7 +107,9 @@ function Combat.register_death_hook(get_player_team_fn)
                 local victim_ctrl = victim:GetInstigatorController()
                 if not victim_ctrl then return end
                 local victim_id = victim_ctrl.PlayerState.PlayerId
-                local victim_team = get_player_team_fn(victim_id)
+                -- FRESH reference every call (fixes stale closure bug)
+                local Teams = require("teams")
+                local victim_team = Teams.get_team(victim_id)
 
                 -- Find killer from damage component
                 local killer_id = nil
@@ -121,7 +123,7 @@ function Combat.register_death_hook(get_player_team_fn)
                             local killer_ctrl = killer:GetInstigatorController()
                             if killer_ctrl and killer_ctrl:IsValid() then
                                 killer_id = killer_ctrl.PlayerState.PlayerId
-                                killer_team = get_player_team_fn(killer_id)
+                                killer_team = Teams.get_team(killer_id)
                             end
                         end
                     end
@@ -185,25 +187,66 @@ function Combat.register_ff_hook(get_player_team_fn)
                 local victim_ctrl = victim:GetInstigatorController()
                 if not victim_ctrl then return end
                 local victim_id = victim_ctrl.PlayerState.PlayerId
-                local victim_team = get_player_team_fn(victim_id)
-                if not victim_team then return end
 
-                -- Check instigator
+                -- Get attacker from damage event
                 local de = damageEvent:get()
-                if not de or not de.Instigator or not de.Instigator:IsValid() then return end
-                local attacker = de.Instigator
-                local attacker_ctrl = attacker:GetInstigatorController()
-                if not attacker_ctrl then return end
-                local attacker_id = attacker_ctrl.PlayerState.PlayerId
-                local attacker_team = get_player_team_fn(attacker_id)
+                if not de then return end
 
-                if attacker_team and victim_team and attacker_team == victim_team then
-                    -- Same team — heal back
-                    local cur = victim.BP_Components_Health:GetAuthoritativeHealth()
-                    local max = victim.BP_Components_Health:GetMaxHealth()
-                    if cur < max then
-                        victim.BP_Components_Health:SetHealth(max)
+                local attacker_id = nil
+                local is_player_attacker = false
+                pcall(function()
+                    -- Use LastDamageInstigatorServer on the victim's DamageComponent
+                    local dmg_comp = victim.BP_Components_PlayerDamage
+                    if not dmg_comp then return end
+                    local last_ins = dmg_comp.LastDamageInstigatorServer
+                    if last_ins and last_ins:IsValid() then
+                        local ins_name = last_ins:GetFullName()
+                        if ins_name:find("PlayerCharacter") then
+                            is_player_attacker = true
+                            local attacker_ctrl = last_ins:GetInstigatorController()
+                            if attacker_ctrl and attacker_ctrl:IsValid() then
+                                attacker_id = attacker_ctrl.PlayerState.PlayerId
+                            end
+                        end
+                        print(string.format("[Harena] FF: attacker=P%s victim=P%d (from LastDamageInstigatorServer)\n",
+                            tostring(attacker_id), victim_id))
+                    else
+                        print(string.format("[Harena] FF: LastDamageInstigatorServer nil for P%d\n", victim_id))
                     end
+                end)
+
+                -- Only process player-on-player damage
+                if not is_player_attacker or not attacker_id then return end
+
+                -- Get teams (fresh every call)
+                local Teams = require("teams")
+                local victim_team = Teams.get_team(victim_id)
+                local attacker_team = Teams.get_team(attacker_id)
+
+                -- Same team = heal back (FF protection)
+                if victim_team and attacker_team and victim_team == attacker_team then
+                    pcall(function()
+                        local hp = victim.BP_Components_Health
+                        local max = hp:GetMaxHealth()
+                        hp:SetHealth(max, "FFHeal")
+
+                        -- Also restore shield if possible
+                        pcall(function()
+                            local shield = victim.BP_Components_VitalShield
+                            if shield then
+                                local max_shield = shield.MaxShield
+                                if max_shield and max_shield > 0 then
+                                    shield.CurrentShield = max_shield
+                                end
+                            end
+                        end)
+                    end)
+                    print(string.format("[Harena] FF BLOCKED: P%d(%s) -> P%d(%s) healed\n",
+                        attacker_id, tostring(attacker_team), victim_id, tostring(victim_team)))
+                else
+                    -- Different team or no team = allow damage
+                    print(string.format("[Harena] PvP HIT: P%d(%s) -> P%d(%s)\n",
+                        attacker_id, tostring(attacker_team), victim_id, tostring(victim_team)))
                 end
             end)
         end)

@@ -32,8 +32,9 @@ end
 -- Utility: clear all equipment
 -- =============================================================================
 local function clear_all(ctrl)
-    pcall(function() ctrl.BP_Components_Inventory:ClearInventory() end)
+    -- Stagger clears to avoid replication flood on dedicated servers
     pcall(function() ctrl.BP_Components_Loadout:ClearInventory() end)
+    pcall(function() ctrl.BP_Components_Inventory:ClearInventory() end)
 end
 
 -- =============================================================================

@@ -188,7 +188,135 @@ Events.on("flag_captured", function(data)
 end)
 
 -- =============================================================================
--- KEYBINDS
+-- CHAT COMMANDS (works on dedicated servers)
+-- =============================================================================
+pcall(function()
+    RegisterHook("/Script/JagexChatBackend.PlayerChatComponent:Server_SendChatMessage", function(self, messageData)
+        pcall(function()
+            local msg = messageData:get()
+            if not msg then return end
+            local body = msg.MessageBody:ToString()
+            local pid = msg.PlayerId
+
+            -- Only process commands starting with !
+            if not body or body:sub(1, 1) ~= "!" then return end
+
+            local cmd = body:lower():match("^!(%S+)")
+            if not cmd then return end
+
+            print(string.format("[Harena] Chat command: '%s' from P%d\n", cmd, pid))
+
+            ExecuteInGameThread(function()
+                if cmd == "start" then
+                    local phase = Match.state.phase
+                    if phase == "idle" then
+                        Match.start()
+                    elseif phase == "team_select" then
+                        UI.announce("Fast tracking to class selection!")
+                        Match.auto_assign_remaining()
+                        Match.start_class_select()
+                    elseif phase == "class_select" then
+                        UI.announce("Fast tracking to preparation!")
+                        Match.start_preparation()
+                    elseif phase == "active" then
+                        UI.announce("Match already in progress!")
+                    end
+                elseif cmd == "reset" then
+                    Match.reset()
+                    UI.announce("Match reset!")
+                elseif cmd == "phase" then
+                    UI.announce("Current phase: " .. Match.state.phase)
+                elseif cmd == "red" then
+                    -- Force this player to red team
+                    local players = FindAllOf("BP_PlayerCharacter_C")
+                    if players then
+                        for _, p in pairs(players) do
+                            pcall(function()
+                                local ctrl = p:GetInstigatorController()
+                                if ctrl and ctrl.PlayerState.PlayerId == pid then
+                                    Teams.add_player("red", pid, p)
+                                    UI.send(ctrl, "Joined RED team!", 1, 0.2, 0.2)
+                                    print(string.format("[Harena] P%d forced to RED\n", pid))
+                                end
+                            end)
+                        end
+                    end
+                elseif cmd == "blue" then
+                    -- Force this player to blue team
+                    local players = FindAllOf("BP_PlayerCharacter_C")
+                    if players then
+                        for _, p in pairs(players) do
+                            pcall(function()
+                                local ctrl = p:GetInstigatorController()
+                                if ctrl and ctrl.PlayerState.PlayerId == pid then
+                                    Teams.add_player("blue", pid, p)
+                                    UI.send(ctrl, "Joined BLUE team!", 0.2, 0.2, 1)
+                                    print(string.format("[Harena] P%d forced to BLUE\n", pid))
+                                end
+                            end)
+                        end
+                    end
+                elseif cmd == "pvpon" then
+                    -- Enable PvP for all players
+                    pcall(function()
+                        local players = FindAllOf("BP_PlayerCharacter_C")
+                        if players then
+                            for _, p in pairs(players) do
+                                pcall(function()
+                                    p.BP_Components_PlayerDamage.bIsPvpEnabled = true
+                                end)
+                            end
+                        end
+                    end)
+                    UI.announce("PvP ENABLED for all players!")
+                    print("[Harena] PvP force enabled\n")
+                elseif cmd == "pvpoff" then
+                    -- Disable PvP for all players
+                    pcall(function()
+                        local players = FindAllOf("BP_PlayerCharacter_C")
+                        if players then
+                            for _, p in pairs(players) do
+                                pcall(function()
+                                    p.BP_Components_PlayerDamage.bIsPvpEnabled = false
+                                end)
+                            end
+                        end
+                    end)
+                    UI.announce("PvP DISABLED for all players!")
+                    print("[Harena] PvP force disabled\n")
+                elseif cmd == "teams" then
+                    -- Show current teams
+                    local red_list = {}
+                    local blue_list = {}
+                    for _, p in ipairs(Teams.data.red.players) do
+                        table.insert(red_list, "P" .. p.id)
+                    end
+                    for _, p in ipairs(Teams.data.blue.players) do
+                        table.insert(blue_list, "P" .. p.id)
+                    end
+                    UI.announce("RED: " .. (#red_list > 0 and table.concat(red_list, ",") or "none") ..
+                                " | BLUE: " .. (#blue_list > 0 and table.concat(blue_list, ",") or "none"))
+                elseif cmd == "help" then
+                    local players = FindAllOf("BP_PlayerCharacter_C")
+                    if players then
+                        for _, p in pairs(players) do
+                            pcall(function()
+                                local ctrl = p:GetInstigatorController()
+                                if ctrl and ctrl.PlayerState.PlayerId == pid then
+                                    UI.send(ctrl, "!start !reset !red !blue !pvpon !pvpoff !teams !phase !help", 1, 1, 0)
+                                end
+                            end)
+                        end
+                    end
+                end
+            end)
+        end)
+    end)
+    print("[Harena] Chat command hook registered\n")
+end)
+
+-- =============================================================================
+-- KEYBINDS (work on local/listen server only)
 -- =============================================================================
 
 -- MATCH
